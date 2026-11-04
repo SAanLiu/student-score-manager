@@ -3,7 +3,7 @@ package io.github.saanliu.student.app;
 import io.github.saanliu.student.exception.StudentException;
 import io.github.saanliu.student.model.ScoreStatistics;
 import io.github.saanliu.student.model.Student;
-import io.github.saanliu.student.repository.FileStudentRepository;
+import io.github.saanliu.student.repository.SimpleFileStudentRepository;
 import io.github.saanliu.student.service.StudentService;
 
 import java.io.PrintStream;
@@ -30,7 +30,7 @@ public class Main {
     public static void main(String[] args) {
         Path dataFile = Path.of("data", "students.csv");
         try {
-            StudentService service = new StudentService(new FileStudentRepository(dataFile));
+            StudentService service = new StudentService(new SimpleFileStudentRepository(dataFile));
             System.out.println("Data file: " + dataFile.toAbsolutePath().normalize());
             try (Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8)) {
                 new Main(service, scanner, System.out).run();
