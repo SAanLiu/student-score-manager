@@ -1,6 +1,7 @@
 package io.github.saanliu.student.app;
 
 import io.github.saanliu.student.exception.StudentException;
+import io.github.saanliu.student.model.ScoreStatistics;
 import io.github.saanliu.student.model.Student;
 import io.github.saanliu.student.repository.InMemoryStudentRepository;
 import io.github.saanliu.student.service.StudentService;
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Scanner;
 
 public class Main {
@@ -43,11 +45,12 @@ public class Main {
                     case 3 -> updateScore();
                     case 4 -> findStudent();
                     case 5 -> listStudents();
+                    case 6 -> showStatistics();
                     case 0 -> {
                         output.println("Goodbye.");
                         running = false;
                     }
-                    default -> output.println("Invalid choice. Please enter 0 to 5.");
+                    default -> output.println("Invalid choice. Please enter 0 to 6.");
                 }
             } catch (StudentException exception) {
                 // 业务失败只影响当前操作，菜单继续运行。
@@ -68,7 +71,8 @@ public class Main {
         output.println("2. Delete student");
         output.println("3. Update score");
         output.println("4. Find student by ID");
-        output.println("5. List all students");
+        output.println("5. List all students by score (highest first)");
+        output.println("6. Show statistics");
         output.println("0. Exit");
     }
 
@@ -109,6 +113,25 @@ public class Main {
         for (Student student : students) {
             printStudent(student);
         }
+    }
+
+    private void showStatistics() {
+        Optional<ScoreStatistics> result = service.getStatistics();
+        if (result.isEmpty()) {
+            output.println("No students available for statistics.");
+            return;
+        }
+
+        ScoreStatistics statistics = result.get();
+        output.println("=== Score Statistics ===");
+        output.println("Student count: " + statistics.studentCount());
+        output.printf(Locale.ROOT, "Average score: %.2f%n", statistics.averageScore());
+        output.printf(Locale.ROOT, "Highest score: %.2f%n", statistics.highestScore());
+        output.printf(Locale.ROOT, "Lowest score: %.2f%n", statistics.lowestScore());
+        output.printf(Locale.ROOT, "Pass rate: %.2f%%%n", statistics.passRate());
+        output.println("Class averages:");
+        statistics.classAverages().forEach((className, average) ->
+                output.printf(Locale.ROOT, "%s: %.2f%n", className, average));
     }
 
     private void printStudent(Student student) {

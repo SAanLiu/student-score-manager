@@ -66,7 +66,7 @@ class MainTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"-1", "6", "99"})
+    @ValueSource(strings = {"-1", "7", "99"})
     void rejectsUnknownMenuChoiceAndContinues(String choice) {
         String output = runMenu(choice + "\n5\n0\n");
 
@@ -154,6 +154,53 @@ class MainTest {
         assertTrue(output.contains("Goodbye."));
         assertFalse(output.contains("Student added successfully."));
         assertThrows(StudentNotFoundException.class, () -> service.getStudent("001"));
+    }
+
+    @Test
+    void displaysStatisticsAndSortedStudents() {
+        service.addStudent("003", "Carol", "Class B", 30);
+        service.addStudent("001", "Alice", "Class A", 90);
+        service.addStudent("004", "Dave", "Class B", 100);
+        service.addStudent("002", "Bob", "Class A", 60);
+
+        String output = runMenu("5\n6\n0\n");
+
+        assertTrue(output.indexOf("ID: 004") < output.indexOf("ID: 001"));
+        assertTrue(output.indexOf("ID: 001") < output.indexOf("ID: 002"));
+        assertTrue(output.indexOf("ID: 002") < output.indexOf("ID: 003"));
+        assertTrue(output.contains("Student count: 4"));
+        assertTrue(output.contains("Average score: 70.00"));
+        assertTrue(output.contains("Highest score: 100.00"));
+        assertTrue(output.contains("Lowest score: 30.00"));
+        assertTrue(output.contains("Pass rate: 75.00%"));
+        assertTrue(output.contains("Class A: 75.00"));
+        assertTrue(output.contains("Class B: 65.00"));
+        assertTrue(output.indexOf("Class A: 75.00") < output.indexOf("Class B: 65.00"));
+    }
+
+    @Test
+    void displaysNoStatisticsForEmptyDataAndContinues() {
+        String output = runMenu("6\n5\n0\n");
+
+        assertTrue(output.contains("No students available for statistics."));
+        assertTrue(output.contains("No students found."));
+        assertFalse(output.contains("Average score:"));
+        assertFalse(output.contains("NaN"));
+        assertTrue(output.contains("Goodbye."));
+    }
+
+    @Test
+    void roundsStatisticsOnlyForDisplay() {
+        service.addStudent("001", "Alice", "Class A", 100);
+        service.addStudent("002", "Bob", "Class A", 0);
+        service.addStudent("003", "Carol", "Class A", 0);
+
+        String output = runMenu("6\n0\n");
+
+        assertTrue(output.contains("Average score: 33.33"));
+        assertTrue(output.contains("Pass rate: 33.33%"));
+        assertTrue(output.contains("Class A: 33.33"));
+        assertEquals(100.0 / 3, service.getStatistics().orElseThrow().averageScore(), 1e-10);
     }
 
     private String runMenu(String input) {

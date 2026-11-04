@@ -3,15 +3,18 @@ package io.github.saanliu.student.service;
 import io.github.saanliu.student.exception.DuplicateStudentException;
 import io.github.saanliu.student.exception.InvalidStudentException;
 import io.github.saanliu.student.exception.StudentNotFoundException;
+import io.github.saanliu.student.model.ScoreStatistics;
 import io.github.saanliu.student.model.Student;
 import io.github.saanliu.student.repository.InMemoryStudentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -141,6 +144,93 @@ class StudentServiceTest {
 
         assertEquals(List.of(original), snapshot);
         assertEquals(2, service.getAllStudents().size());
+    }
+
+    @Test
+    void sortsByDescendingScoreThenIdWithoutChangingStorageOrder() {
+        InMemoryStudentRepository repository = new InMemoryStudentRepository();
+        service = new StudentService(repository);
+        Student bob = service.addStudent("002", "Bob", "Class A", 90);
+        Student carol = service.addStudent("003", "Carol", "Class B", 0);
+        Student alice = service.addStudent("001", "Alice", "Class A", 90);
+        Student dave = service.addStudent("004", "Dave", "Class B", 100);
+
+        assertEquals(List.of(dave, alice, bob, carol), service.getAllStudents());
+        assertEquals(List.of(bob, carol, alice, dave), repository.findAll());
+    }
+
+    @Test
+    void hasNoStatisticsWhenThereAreNoStudents() {
+        assertTrue(service.getStatistics().isEmpty());
+    }
+
+    @Test
+    void calculatesStatisticsForClassesWithDifferentSizes() {
+        service.addStudent("001", "Alice", "Class A", 100);
+        service.addStudent("002", "Bob", "Class A", 60);
+        service.addStudent("003", "Carol", "Class B", 59.5);
+        service.addStudent("004", "Dave", "Class B", 0);
+        service.addStudent("005", "Eve", "Class B", 80.5);
+
+        ScoreStatistics statistics = service.getStatistics().orElseThrow();
+
+        assertEquals(5, statistics.studentCount());
+        assertEquals(60.0, statistics.averageScore(), 1e-10);
+        assertEquals(100.0, statistics.highestScore());
+        assertEquals(0.0, statistics.lowestScore());
+        assertEquals(60.0, statistics.passRate(), 1e-10);
+        assertEquals(80.0, statistics.classAverages().get("Class A"), 1e-10);
+        assertEquals(140.0 / 3, statistics.classAverages().get("Class B"), 1e-10);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0, 0", "59.99, 0", "60, 100", "100, 100"})
+    void calculatesSingleStudentStatisticsAtPassingBoundary(double score, double expectedPassRate) {
+        service.addStudent("001", "Alice", "Class A", score);
+
+        ScoreStatistics statistics = service.getStatistics().orElseThrow();
+
+        assertEquals(1, statistics.studentCount());
+        assertEquals(score, statistics.averageScore());
+        assertEquals(score, statistics.highestScore());
+        assertEquals(score, statistics.lowestScore());
+        assertEquals(expectedPassRate, statistics.passRate());
+        assertEquals(Map.of("Class A", score), statistics.classAverages());
+    }
+
+    @Test
+    void refreshesStatisticsAfterUpdatesAndDeletes() {
+        service.addStudent("001", "Alice", "Class A", 0);
+        service.addStudent("002", "Bob", "Class B", 100);
+        ScoreStatistics initial = service.getStatistics().orElseThrow();
+        assertEquals(50.0, initial.averageScore());
+        assertEquals(50.0, initial.passRate());
+
+        service.updateScore("001", 60);
+        ScoreStatistics updated = service.getStatistics().orElseThrow();
+        assertEquals(80.0, updated.averageScore());
+        assertEquals(100.0, updated.passRate());
+
+        service.deleteStudent("002");
+        ScoreStatistics remaining = service.getStatistics().orElseThrow();
+        assertEquals(60.0, remaining.averageScore());
+        assertEquals(Map.of("Class A", 60.0), remaining.classAverages());
+
+        service.deleteStudent("001");
+        assertTrue(service.getStatistics().isEmpty());
+    }
+
+    @Test
+    void keepsClassAveragesSortedAndProtectsStatisticsSnapshot() {
+        service.addStudent("002", "Bob", "Class B", 60);
+        service.addStudent("001", "Alice", " Class A ", 80);
+        ScoreStatistics statistics = service.getStatistics().orElseThrow();
+
+        assertEquals(List.of("Class A", "Class B"), List.copyOf(statistics.classAverages().keySet()));
+        assertThrows(UnsupportedOperationException.class, () -> statistics.classAverages().clear());
+        service.updateScore("001", 100);
+        assertEquals(80.0, statistics.classAverages().get("Class A"));
+        assertEquals(70.0, statistics.averageScore());
     }
 
     @Test
