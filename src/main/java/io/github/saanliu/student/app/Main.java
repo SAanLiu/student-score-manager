@@ -3,11 +3,12 @@ package io.github.saanliu.student.app;
 import io.github.saanliu.student.exception.StudentException;
 import io.github.saanliu.student.model.ScoreStatistics;
 import io.github.saanliu.student.model.Student;
-import io.github.saanliu.student.repository.InMemoryStudentRepository;
+import io.github.saanliu.student.repository.FileStudentRepository;
 import io.github.saanliu.student.service.StudentService;
 
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
@@ -27,9 +28,16 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        StudentService service = new StudentService(new InMemoryStudentRepository());
-        try (Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8)) {
-            new Main(service, scanner, System.out).run();
+        Path dataFile = Path.of("data", "students.csv");
+        try {
+            StudentService service = new StudentService(new FileStudentRepository(dataFile));
+            System.out.println("Data file: " + dataFile.toAbsolutePath().normalize());
+            try (Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8)) {
+                new Main(service, scanner, System.out).run();
+            }
+        } catch (StudentException exception) {
+            System.err.println("Startup failed: " + exception.getMessage());
+            System.exit(1);
         }
     }
 

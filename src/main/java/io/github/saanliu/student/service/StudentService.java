@@ -2,6 +2,7 @@ package io.github.saanliu.student.service;
 
 import io.github.saanliu.student.exception.DuplicateStudentException;
 import io.github.saanliu.student.exception.InvalidStudentException;
+import io.github.saanliu.student.exception.StudentException;
 import io.github.saanliu.student.exception.StudentNotFoundException;
 import io.github.saanliu.student.model.ScoreStatistics;
 import io.github.saanliu.student.model.Student;
@@ -9,10 +10,12 @@ import io.github.saanliu.student.repository.StudentRepository;
 
 import java.util.Comparator;
 import java.util.DoubleSummaryStatistics;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -24,19 +27,14 @@ public class StudentService {
     // 依赖接口，具体使用内存还是文件由程序启动时决定。
     public StudentService(StudentRepository repository) {
         this.repository = Objects.requireNonNull(repository, "Repository must not be null.");
+        validateStoredStudents();
     }
 
     public Student addStudent(String id, String name, String className, double score) {
-        String normalizedId = requireText(id, "ID");
-        String normalizedName = requireText(name, "Name");
-        String normalizedClassName = requireText(className, "Class name");
-        validateScore(score);
-
-        if (repository.findById(normalizedId).isPresent()) {
-            throw new DuplicateStudentException(normalizedId);
+        Student student = validateStudent(id, name, className, score);
+        if (repository.findById(student.id()).isPresent()) {
+            throw new DuplicateStudentException(student.id());
         }
-
-        Student student = new Student(normalizedId, normalizedName, normalizedClassName, score);
         repository.save(student);
         return student;
     }
@@ -90,6 +88,36 @@ public class StudentService {
 
         return Optional.of(new ScoreStatistics(summary.getCount(), summary.getAverage(),
                 summary.getMax(), summary.getMin(), passRate, classAverages));
+    }
+
+    private Student validateStudent(String id, String name, String className, double score) {
+        String normalizedId = requireText(id, "ID");
+        String normalizedName = requireText(name, "Name");
+        String normalizedClassName = requireText(className, "Class name");
+        validateScore(score);
+        return new Student(normalizedId, normalizedName, normalizedClassName, score);
+    }
+
+    private void validateStoredStudents() {
+        Set<String> ids = new HashSet<>();
+        List<Student> stored = repository.findAll();
+        for (int index = 0; index < stored.size(); index++) {
+            Student student = stored.get(index);
+            try {
+                Student normalized = validateStudent(student.id(), student.name(),
+                        student.className(), student.score());
+                if (!student.equals(normalized)) {
+                    throw new InvalidStudentException("Stored text fields must not have surrounding whitespace.");
+                }
+                if (!ids.add(student.id())) {
+                    throw new DuplicateStudentException(student.id());
+                }
+            } catch (StudentException exception) {
+                // 仅报告错误，不擅自修改或覆盖已有文件。
+                throw new InvalidStudentException("Invalid stored student at record " + (index + 1)
+                        + ": " + exception.getMessage());
+            }
+        }
     }
 
     private String requireText(String value, String fieldName) {
