@@ -47,7 +47,6 @@ public class StudentService {
         Student student = getStudent(id);
         validateScore(score);
 
-        // record 不提供 setter，修改成绩时创建新对象并替换旧对象。
         Student updated = new Student(student.id(), student.name(), student.className(), score);
         repository.save(updated);
         return updated;
@@ -65,7 +64,6 @@ public class StudentService {
     }
 
     private void validateScore(double score) {
-        // NaN 与普通数字的大小比较均为 false，因此需要单独检查有限值。
         if (!Double.isFinite(score) || score < 0 || score > 100) {
             throw new InvalidStudentException("Score must be a finite number between 0 and 100.");
         }
