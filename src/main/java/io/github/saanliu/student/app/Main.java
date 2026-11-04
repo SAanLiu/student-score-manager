@@ -1,38 +1,147 @@
 package io.github.saanliu.student.app;
 
 import io.github.saanliu.student.exception.StudentException;
+import io.github.saanliu.student.model.Student;
 import io.github.saanliu.student.repository.InMemoryStudentRepository;
 import io.github.saanliu.student.service.StudentService;
 
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Locale;
+import java.util.NoSuchElementException;
+import java.util.Scanner;
+
 public class Main {
-    public static void main(String[] args) {
-        StudentService service = new StudentService(new InMemoryStudentRepository());
+    private final StudentService service;
+    private final Scanner scanner;
+    private final PrintStream output;
 
-        // 第一步用固定数据演示，第二步再替换为交互菜单。
-        System.out.println("=== Student Management Core Demo ===");
-        System.out.println("Added: " + service.addStudent("001", "Alice", "Class A", 85.5));
-        System.out.println("Added: " + service.addStudent("002", "Bob", "Class B", 60));
-        System.out.println("Found: " + service.getStudent("001"));
-        System.out.println("Updated: " + service.updateScore("001", 92));
-        service.deleteStudent("002");
-        System.out.println("Deleted student: 002");
-        System.out.println("Remaining students: " + service.getAllStudents());
-
-        showExpectedFailure(() -> service.addStudent("001", "Charlie", "Class A", 80));
-        showExpectedFailure(() -> service.addStudent("003", "   ", "Class A", 80));
-        showExpectedFailure(() -> service.addStudent("003", "Charlie", "Class A", 101));
-        showExpectedFailure(() -> service.updateScore("001", Double.NaN));
-        showExpectedFailure(() -> service.getStudent("002"));
-        System.out.println("Demo completed.");
+    // 将输入输出传入，测试时就能模拟键盘输入并检查显示结果。
+    public Main(StudentService service, Scanner scanner, PrintStream output) {
+        this.service = service;
+        this.scanner = scanner;
+        this.output = output;
     }
 
-    private static void showExpectedFailure(Runnable action) {
-        try {
-            action.run();
-        } catch (StudentException exception) {
-            System.out.println("Expected error: " + exception.getMessage());
+    public static void main(String[] args) {
+        StudentService service = new StudentService(new InMemoryStudentRepository());
+        try (Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8)) {
+            new Main(service, scanner, System.out).run();
+        }
+    }
+
+    public void run() {
+        boolean running = true;
+        while (running) {
+            printMenu();
+            try {
+                int choice = readMenuChoice();
+                switch (choice) {
+                    case 1 -> addStudent();
+                    case 2 -> deleteStudent();
+                    case 3 -> updateScore();
+                    case 4 -> findStudent();
+                    case 5 -> listStudents();
+                    case 0 -> {
+                        output.println("Goodbye.");
+                        running = false;
+                    }
+                    default -> output.println("Invalid choice. Please enter 0 to 5.");
+                }
+            } catch (StudentException exception) {
+                // 业务失败只影响当前操作，菜单继续运行。
+                output.println("Error: " + exception.getMessage());
+            } catch (NoSuchElementException exception) {
+                // 输入流结束时退出，避免无限循环或显示异常堆栈。
+                output.println();
+                output.println("Input ended. Goodbye.");
+                running = false;
+            }
+        }
+    }
+
+    private void printMenu() {
+        output.println();
+        output.println("=== Student Score Manager ===");
+        output.println("1. Add student");
+        output.println("2. Delete student");
+        output.println("3. Update score");
+        output.println("4. Find student by ID");
+        output.println("5. List all students");
+        output.println("0. Exit");
+    }
+
+    private void addStudent() {
+        String id = readLine("ID: ");
+        String name = readLine("Name: ");
+        String className = readLine("Class name: ");
+        double score = readScore();
+        Student student = service.addStudent(id, name, className, score);
+        output.println("Student added successfully.");
+        printStudent(student);
+    }
+
+    private void deleteStudent() {
+        String id = readLine("ID: ");
+        service.deleteStudent(id);
+        output.println("Student deleted successfully.");
+    }
+
+    private void updateScore() {
+        String id = readLine("ID: ");
+        double score = readScore();
+        Student student = service.updateScore(id, score);
+        output.println("Score updated successfully.");
+        printStudent(student);
+    }
+
+    private void findStudent() {
+        printStudent(service.getStudent(readLine("ID: ")));
+    }
+
+    private void listStudents() {
+        List<Student> students = service.getAllStudents();
+        if (students.isEmpty()) {
+            output.println("No students found.");
             return;
         }
-        throw new AssertionError("Expected a student operation to fail.");
+        for (Student student : students) {
+            printStudent(student);
+        }
+    }
+
+    private void printStudent(Student student) {
+        output.printf(Locale.ROOT, "ID: %s | Name: %s | Class: %s | Score: %.2f%n",
+                student.id(), student.name(), student.className(), student.score());
+    }
+
+    private int readMenuChoice() {
+        while (true) {
+            String value = readLine("Choose an option: ").strip();
+            try {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException exception) {
+                output.println("Invalid input. Please enter a whole number.");
+            }
+        }
+    }
+
+    private double readScore() {
+        while (true) {
+            String value = readLine("Score: ").strip();
+            try {
+                // 此处只转换数字，成绩范围等业务规则仍由 service 校验。
+                return Double.parseDouble(value);
+            } catch (NumberFormatException exception) {
+                output.println("Invalid input. Please enter a number, such as 85.5.");
+            }
+        }
+    }
+
+    private String readLine(String prompt) {
+        output.print(prompt);
+        output.flush();
+        return scanner.nextLine();
     }
 }
