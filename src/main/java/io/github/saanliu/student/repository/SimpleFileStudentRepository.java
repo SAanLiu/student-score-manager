@@ -79,9 +79,9 @@ public class SimpleFileStudentRepository implements StudentRepository {
     }
 
     private void saveChanges(List<Student> updated) {
+        // 先检查所有字段能否往返读写，再执行任何文件操作。
         List<String> lines = updated.stream()
-                .map(student -> student.id() + "," + student.name() + ","
-                        + student.className() + "," + student.score())
+                .map(this::toLine)
                 .toList();
         try {
             Files.createDirectories(file.getParent());
@@ -90,6 +90,21 @@ public class SimpleFileStudentRepository implements StudentRepository {
         } catch (IOException exception) {
             throw new StudentStorageException("Could not save student data to " + file
                     + ". No in-memory changes were applied.", exception);
+        }
+    }
+
+    private String toLine(Student student) {
+        validateStorageField(student.id(), "ID");
+        validateStorageField(student.name(), "Name");
+        validateStorageField(student.className(), "Class name");
+        return student.id() + "," + student.name() + "," + student.className() + "," + student.score();
+    }
+
+    private void validateStorageField(String value, String fieldName) {
+        // 这是简化文件格式的限制，不是所有 repository 都应遵守的业务规则。
+        if (value.contains(",") || value.contains("\r") || value.contains("\n")) {
+            throw new StudentStorageException(fieldName
+                    + " cannot contain commas or line breaks with simple file storage.");
         }
     }
 }

@@ -168,4 +168,59 @@ class SimpleFileStudentRepositoryTest {
         assertEquals(List.of(original), repository.findAll());
         assertThrows(UnsupportedOperationException.class, () -> repository.findAll().clear());
     }
+
+    @Test
+    void rejectsCommaInNameBeforeCreatingFile() {
+        StudentService service = new StudentService(new SimpleFileStudentRepository(file));
+
+        StudentStorageException exception = assertThrows(StudentStorageException.class,
+                () -> service.addStudent("001", "Bob, Jr.", "Class A", 90));
+
+        assertTrue(exception.getMessage().contains("Name cannot contain commas or line breaks"));
+        assertTrue(service.getAllStudents().isEmpty());
+        assertFalse(Files.exists(file.getParent()));
+        assertTrue(new StudentService(new SimpleFileStudentRepository(file)).getAllStudents().isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {",", "\n", "\r", "\r\n"})
+    void rejectsUnrepresentableFieldsWithoutChangingExistingData(String separator) throws IOException {
+        StudentRepository repository = new SimpleFileStudentRepository(file);
+        Student original = new Student("001", "Alice", "Class A", 80);
+        repository.save(original);
+        byte[] originalBytes = Files.readAllBytes(file);
+        List<Student> invalidStudents = List.of(
+                new Student("00" + separator + "2", "Bob", "Class B", 90),
+                new Student("001", "Bob" + separator + "Jr.", "Class A", 90),
+                new Student("002", "Bob", "Class" + separator + "B", 90));
+
+        for (Student invalid : invalidStudents) {
+            assertThrows(StudentStorageException.class, () -> repository.save(invalid));
+            assertEquals(List.of(original), repository.findAll());
+            assertArrayEquals(originalBytes, Files.readAllBytes(file));
+            assertEquals(List.of(original), new StudentService(new SimpleFileStudentRepository(file))
+                    .getAllStudents());
+        }
+    }
+
+    @Test
+    void allowsCommaInNameWithOtherRepositoryImplementations() {
+        StudentService inMemory = new StudentService(new InMemoryStudentRepository());
+        StudentService csv = new StudentService(new FileStudentRepository(file));
+
+        Student expected = inMemory.addStudent("001", "Bob, Jr.", "Class A", 90);
+        assertEquals(expected, csv.addStudent("001", "Bob, Jr.", "Class A", 90));
+        assertEquals(expected, new StudentService(new FileStudentRepository(file)).getStudent("001"));
+    }
+
+    @Test
+    void acceptsOrdinaryPunctuationAndCanRestartAfterRejectedInput() {
+        StudentService service = new StudentService(new SimpleFileStudentRepository(file));
+        assertThrows(StudentStorageException.class,
+                () -> service.addStudent("001", "Bob, Jr.", "Class A", 90));
+
+        Student expected = service.addStudent("001", "Bob Jr. (Ace)", "Class A-1", 90);
+
+        assertEquals(expected, new StudentService(new SimpleFileStudentRepository(file)).getStudent("001"));
+    }
 }
