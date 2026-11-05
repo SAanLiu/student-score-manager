@@ -10,45 +10,15 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
 
-public class SimpleFileStudentRepository implements StudentRepository {
-    private final Path file;
-    private List<Student> students;
-
+public class SimpleFileStudentRepository extends AbstractFileStudentRepository {
     public SimpleFileStudentRepository(Path file) {
-        this.file = Objects.requireNonNull(file, "Data file must not be null.").toAbsolutePath().normalize();
-        this.students = load();
+        super(file);
+        loadStudents();
     }
 
     @Override
-    public void save(Student student) {
-        List<Student> updated = new ArrayList<>(students);
-        updated.removeIf(existing -> existing.id().equals(student.id()));
-        updated.add(student);
-        saveChanges(updated);
-    }
-
-    @Override
-    public Optional<Student> findById(String id) {
-        return students.stream().filter(student -> student.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteById(String id) {
-        List<Student> updated = students.stream()
-                .filter(student -> !student.id().equals(id))
-                .toList();
-        saveChanges(updated);
-    }
-
-    @Override
-    public List<Student> findAll() {
-        return List.copyOf(students);
-    }
-
-    private List<Student> load() {
+    protected List<Student> readStudents() {
         try {
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
             List<Student> loaded = new ArrayList<>();
@@ -70,7 +40,7 @@ public class SimpleFileStudentRepository implements StudentRepository {
                 }
                 loaded.add(new Student(fields[0], fields[1], fields[2], score));
             }
-            return List.copyOf(loaded);
+            return loaded;
         } catch (NoSuchFileException exception) {
             return List.of();
         } catch (IOException exception) {
@@ -78,7 +48,8 @@ public class SimpleFileStudentRepository implements StudentRepository {
         }
     }
 
-    private void saveChanges(List<Student> updated) {
+    @Override
+    protected void writeStudents(List<Student> updated) {
         // 先检查所有字段能否往返读写，再执行任何文件操作。
         List<String> lines = updated.stream()
                 .map(this::toLine)
@@ -86,7 +57,6 @@ public class SimpleFileStudentRepository implements StudentRepository {
         try {
             Files.createDirectories(file.getParent());
             Files.write(file, lines, StandardCharsets.UTF_8);
-            students = List.copyOf(updated);
         } catch (IOException exception) {
             throw new StudentStorageException("Could not save student data to " + file
                     + ". No in-memory changes were applied.", exception);

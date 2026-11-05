@@ -18,50 +18,20 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
 
-public class FileStudentRepository implements StudentRepository {
+public class FileStudentRepository extends AbstractFileStudentRepository {
     private static final CSVFormat CSV_FORMAT = CSVFormat.RFC4180.builder()
             .setRecordSeparator("\n")
             .setIgnoreEmptyLines(false)
             .get();
 
-    private final Path file;
-    private List<Student> students;
-
     public FileStudentRepository(Path file) {
-        this.file = Objects.requireNonNull(file, "Data file must not be null.").toAbsolutePath().normalize();
-        this.students = load();
+        super(file);
+        loadStudents();
     }
 
     @Override
-    public void save(Student student) {
-        List<Student> updated = new ArrayList<>(students);
-        updated.removeIf(existing -> existing.id().equals(student.id()));
-        updated.add(student);
-        saveChanges(updated);
-    }
-
-    @Override
-    public Optional<Student> findById(String id) {
-        return students.stream().filter(student -> student.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteById(String id) {
-        List<Student> updated = students.stream()
-                .filter(student -> !student.id().equals(id))
-                .toList();
-        saveChanges(updated);
-    }
-
-    @Override
-    public List<Student> findAll() {
-        return List.copyOf(students);
-    }
-
-    private List<Student> load() {
+    protected List<Student> readStudents() {
         List<Student> loaded = new ArrayList<>();
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             // 兼容部分编辑器写入的 UTF-8 BOM，它不属于学生 id。
@@ -86,7 +56,7 @@ public class FileStudentRepository implements StudentRepository {
                     loaded.add(new Student(record.get(0), record.get(1), record.get(2), score));
                 }
             }
-            return List.copyOf(loaded);
+            return loaded;
         } catch (NoSuchFileException exception) {
             // 首次运行没有数据文件时，从空数据开始，不在读取阶段创建文件。
             return List.of();
@@ -96,7 +66,8 @@ public class FileStudentRepository implements StudentRepository {
         }
     }
 
-    private void saveChanges(List<Student> updated) {
+    @Override
+    protected void writeStudents(List<Student> updated) {
         Path temporaryFile = null;
         try {
             Files.createDirectories(file.getParent());
@@ -112,8 +83,6 @@ public class FileStudentRepository implements StudentRepository {
             // 文件完整写入并关闭后再替换；不支持原子替换时让操作明确失败。
             Files.move(temporaryFile, file, StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING);
-            // 只有磁盘保存成功，才发布新的内存快照。
-            students = List.copyOf(updated);
         } catch (IOException exception) {
             throw new StudentStorageException("Could not save student data to " + file
                     + ". No in-memory changes were applied: " + exception.getMessage(), exception);

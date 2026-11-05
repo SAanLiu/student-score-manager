@@ -130,12 +130,15 @@ id,name,className,score
 
 ```csv
 001,Alice,Class A,90.0
-002,"Bob, Jr.",Class B,85.5
+002,Bob Jr.,Class B,85.5
 ```
 
-Apache Commons CSV 负责处理字段中的逗号、双引号和换行转义。
-含换行的字段可能占多个物理行，但仍是一条 CSV 记录。
-保存时保留成绩的数值精度，不使用界面上显示的两位小数格式；读取时兼容 UTF-8 BOM 和 Windows 换行符。
+当前 `Main` 选择 `SimpleFileStudentRepository`，用 `Files.readAllLines` 和 `Files.write` 读写，
+写入前拒绝 id、姓名或班级中的逗号和换行符，不处理 CSV 转义或 UTF-8 BOM。
+
+`FileStudentRepository` 则使用 Apache Commons CSV 处理逗号、双引号和换行转义，并兼容 UTF-8 BOM。
+它允许 `Bob, Jr.` 这样的姓名；含换行的字段可能占多个物理行，但仍是一条 CSV 记录。
+两种实现都支持 Windows 换行符，保存时保留成绩的数值精度，不使用界面上显示的两位小数格式。
 
 ### 自动保存与异常处理
 
@@ -143,8 +146,9 @@ Apache Commons CSV 负责处理字段中的逗号、双引号和换行转义。
 - CSV 格式损坏、文件无法读取或已有学生信息不合法时，启动失败并返回退出码 `1`，保留原文件。
 - 已有数据中的重复 id、空字段、非法成绩和文本首尾空白都会被报告，不会被静默忽略或覆盖。
 - repository 负责 CSV 结构和数字解析，service 负责学生业务规则，包括对启动数据的校验。
-- 保存时先将完整数据写入同目录的临时文件，关闭后原子替换正式文件，再更新内存快照。
-- 保存失败时显示错误，不应用本次内存修改；文件系统不支持原子替换时，也会明确失败。
+- 两种文件实现共用父类规定的顺序：先保存文件，成功后才更新内存快照；失败时显示错误，保留原内存数据。
+- `FileStudentRepository` 先写入同目录的临时文件，关闭后原子替换正式文件；不支持原子替换时会明确失败。
+- `SimpleFileStudentRepository` 直接覆盖正式文件，未提供原子替换保护；实际写入期间的 IO 故障可能使文件不完整。
 - 删除最后一名学生后，保存为空文件。
 
 同一数据文件只应由一个程序实例使用，目前没有实现多进程文件锁或并发修改合并。
@@ -164,7 +168,9 @@ student-score-manager/
 |   |   `-- ScoreStatistics.java
 |   |-- repository/
 |   |   |-- StudentRepository.java
+|   |   |-- AbstractFileStudentRepository.java
 |   |   |-- InMemoryStudentRepository.java
+|   |   |-- SimpleFileStudentRepository.java
 |   |   `-- FileStudentRepository.java
 |   |-- service/StudentService.java
 |   `-- exception/
@@ -176,7 +182,9 @@ student-score-manager/
 |-- src/test/java/io/github/saanliu/student/
 |   |-- app/MainTest.java
 |   |-- service/StudentServiceTest.java
-|   `-- repository/FileStudentRepositoryTest.java
+|   `-- repository/
+|       |-- FileStudentRepositoryTest.java
+|       `-- SimpleFileStudentRepositoryTest.java
 |-- data/
 `-- target/
 ```
@@ -197,6 +205,10 @@ student-score-manager/
 再在启动时选择该实现，service 和菜单逻辑无需改写。
 
 内存实现保留用于独立测试，正式启动时选择文件实现。
+
+两种文件实现继承 `AbstractFileStudentRepository`。父类负责路径初始化、学生快照、增删改查和保存流程，
+子类只负责 `readStudents()`、`writeStudents()` 以及各自的格式处理。
+子类构造方法先调用 `super(file)`，再调用父类的 `loadStudents()` 加载数据，避免在父类构造期间调用可重写的方法。
 
 ## 依赖与学习内容
 
